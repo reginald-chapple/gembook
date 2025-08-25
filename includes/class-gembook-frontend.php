@@ -19,13 +19,16 @@ class GemBook_Frontend {
 	 * Constructor.
 	 */
 	public function __construct() {
+		// Cart and checkout process hooks
 		add_action( 'woocommerce_before_add_to_cart_button', array( $this, 'booking_form' ) );
 		add_filter( 'woocommerce_add_to_cart_validation', array( $this, 'validate_booking' ), 10, 3 );
 		add_filter( 'woocommerce_add_cart_item_data', array( $this, 'add_booking_to_cart_item' ), 10, 2 );
 		add_filter( 'woocommerce_get_cart_item_from_session', array( $this, 'get_cart_item_from_session' ), 10, 3 );
 		add_filter( 'woocommerce_get_item_data', array( $this, 'display_booking_in_cart' ), 10, 2 );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'add_booking_to_order_item' ), 10, 4 );
-		add_action( 'woocommerce_checkout_order_processed', array( $this, 'create_booking_from_order' ), 10, 3 );
+
+		// Use the reliable order status change hook to create the booking.
+		add_action( 'woocommerce_order_status_changed', array( $this, 'create_booking_from_order' ), 10, 4 );
 	}
 
 	/**
@@ -174,11 +177,29 @@ class GemBook_Frontend {
 	}
 
 	/**
-	 * Create booking record after order is processed.
+	 * Create booking record when order status changes.
+	 *
+	 * @param int      $order_id
+	 * @param string   $old_status
+	 * @param string   $new_status
+	 * @param WC_Order $order
 	 */
-	public function create_booking_from_order( $order_id, $posted_data, $order ) {
+	public function create_booking_from_order( $order_id, $old_status, $new_status, $order ) {
+		// --- THIS IS THE KEY FIX ---
+		// Define which statuses should trigger booking creation.
+		$trigger_statuses = array( 'on-hold', 'processing', 'completed' );
+
+		// Only run if the order is moving to a trigger status and booking hasn't been created yet.
+		if ( ! in_array( $new_status, $trigger_statuses ) || $order->get_meta( '_gembook_booking_created' ) ) {
+			return;
+		}
+
+		// Determine the booking status based on the order status.
+		$booking_status = 'on-hold' === $new_status ? 'pending' : 'confirmed';
+
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'gembook_bookings';
+		$booking_created = false;
 
 		foreach ( $order->get_items() as $item_id => $item ) {
 			$booking_data = $item->get_meta( '_gembook_booking_data' );
@@ -201,10 +222,17 @@ class GemBook_Frontend {
 						'end_date'   => $end_date,
 						'start_time' => $start_time,
 						'end_time'   => $end_time,
-						'status'     => 'confirmed', // Or use order status
+						'status'     => $booking_status, // Use the dynamic status
 					)
 				);
+				$booking_created = true;
 			}
+		}
+
+		// If we created at least one booking, mark the order to prevent duplicates.
+		if ( $booking_created ) {
+			$order->update_meta_data( '_gembook_booking_created', true );
+			$order->save();
 		}
 	}
 }

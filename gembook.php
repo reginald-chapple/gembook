@@ -49,7 +49,10 @@ final class GemBook {
 	 */
 	public function __construct() {
 		$this->define_constants();
-		$this->includes();
+		
+		// The DB class is required for the activation hook, so it must be included before hooks are registered.
+		include_once GEMBOOK_PLUGIN_PATH . 'includes/class-gembook-db.php';
+		
 		$this->init_hooks();
 	}
 
@@ -68,7 +71,7 @@ final class GemBook {
 	 * Include required core files.
 	 */
 	public function includes() {
-		include_once GEMBOOK_PLUGIN_PATH . 'includes/class-gembook-db.php';
+		include_once GEMBOOK_PLUGIN_PATH . 'includes/class-wc-product-bookable-service.php';
 		include_once GEMBOOK_PLUGIN_PATH . 'includes/class-gembook-woocommerce.php';
 		// Add the new list table class
 		if ( is_admin() ) {
@@ -91,6 +94,19 @@ final class GemBook {
 	 * Init GemBook when plugins are loaded.
 	 */
 	public function init() {
+		// Don't run the plugin if WooCommerce is not active
+		if ( ! class_exists( 'WooCommerce' ) ) {
+			return;
+		}
+
+		// Register our custom product type with WordPress.
+		// This ensures WooCommerce can find and identify it.
+		if ( ! term_exists( 'bookable_service', 'product_type' ) ) {
+			wp_insert_term( 'bookable_service', 'product_type' );
+		}
+
+		$this->includes();
+
 		// Init classes
 		new GemBook_WooCommerce();
 		new GemBook_Admin();

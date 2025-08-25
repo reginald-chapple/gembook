@@ -19,6 +19,8 @@ class GemBook_WooCommerce {
 	 * Constructor.
 	 */
 	public function __construct() {
+		add_filter( 'woocommerce_product_class', array( $this, 'product_class' ), 10, 2 );
+
 		// Add product type
 		add_filter( 'product_type_selector', array( $this, 'add_product_type' ) );
 
@@ -28,8 +30,36 @@ class GemBook_WooCommerce {
 		// Add product data panels
 		add_action( 'woocommerce_product_data_panels', array( $this, 'add_product_data_panels' ) );
 
+		add_action( 'woocommerce_process_product_meta_bookable_service', array( $this, 'save_product_data' ) );
+
+		// Tell WooCommerce to use the simple product add-to-cart template for our custom product type.
+		add_action( 'woocommerce_bookable_service_add_to_cart', array( $this, 'use_simple_product_template' ) );
+
 		// Save product data
-		add_action( 'woocommerce_process_product_meta', array( $this, 'save_product_data' ) );
+		// add_action( 'woocommerce_process_product_meta', array( $this, 'save_product_data' ) );
+	}
+
+	/**
+	 *
+	 * Load the add-to-cart template for simple products.
+	 */
+	public function use_simple_product_template() {
+		wc_get_template( 'single-product/add-to-cart/simple.php' );
+	}
+
+	/**
+	 *
+	 * Tell WooCommerce to use our new class for the 'bookable_service' type.
+	 *
+	 * @param string $classname
+	 * @param string $product_type
+	 * @return string
+	 */
+	public function product_class( $classname, $product_type ) {
+		if ( 'bookable_service' === $product_type ) {
+			$classname = 'WC_Product_Bookable_Service';
+		}
+		return $classname;
 	}
 
 	/**
@@ -131,6 +161,11 @@ class GemBook_WooCommerce {
 		$product->update_meta_data( '_booking_base_price', $booking_base_price );
 
 		$booking_duration_price = isset( $_POST['_booking_duration_price'] ) ? sanitize_text_field( $_POST['_booking_duration_price'] ) : '';
+		
+		// Sync with WooCommerce's main price fields
+		$product->set_price( $booking_base_price );
+		$product->set_regular_price( $booking_base_price );
+		
 		$product->update_meta_data( '_booking_duration_price', $booking_duration_price );
 
 		$product->save();
